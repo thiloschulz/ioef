@@ -23,6 +23,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef _QCOMMON_H_
 #define _QCOMMON_H_
 
+#if defined(ELITEFORCE) && defined(MISSIONPACK)
+	#undef MISSIONPACK
+#endif
+
 #include "../qcommon/cm_public.h"
 
 //Ignore __attribute__ on non-gcc platforms
@@ -43,6 +47,9 @@ typedef struct {
 	qboolean	allowoverflow;	// if false, do a Com_Error
 	qboolean	overflowed;		// set to true if the buffer size failed (with allowoverflow set)
 	qboolean	oob;			// set to true if the buffer size failed (with allowoverflow set)
+#ifdef ELITEFORCE
+	qboolean	compat;		// Compatibility mode for old EliteForce servers.
+#endif
 	byte	*data;
 	int		maxsize;
 	int		cursize;
@@ -94,6 +101,11 @@ char	*MSG_ReadStringLine (msg_t *sb);
 float	MSG_ReadAngle16 (msg_t *sb);
 void	MSG_ReadData (msg_t *sb, void *buffer, int size);
 int		MSG_LookaheadByte (msg_t *msg);
+
+#ifdef ELITEFORCE
+void MSG_WriteDeltaUsercmd( msg_t *msg, struct usercmd_s *from, struct usercmd_s *to );
+void MSG_ReadDeltaUsercmd( msg_t *msg, struct usercmd_s *from, struct usercmd_s *to );
+#endif
 
 void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *to );
 void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *to );
@@ -251,32 +263,63 @@ PROTOCOL
 ==============================================================
 */
 
-#define	PROTOCOL_VERSION	71
-#define PROTOCOL_LEGACY_VERSION	68
+#ifdef ELITEFORCE
+  #define PROTOCOL_VERSION		26
+  #define PROTOCOL_LEGACY_VERSION	24
+#else
+  #define PROTOCOL_VERSION		71
+  #define PROTOCOL_LEGACY_VERSION	68
+#endif
 // 1.31 - 67
 
 // maintain a list of compatible protocols for demo playing
 // NOTE: that stuff only works with two digits protocols
 extern int demo_protocols[];
 
-#if !defined UPDATE_SERVER_NAME && !defined STANDALONE
-#define	UPDATE_SERVER_NAME	"update.quake3arena.com"
-#endif
 // override on command line, config files etc.
-#ifndef MASTER_SERVER_NAME
-#define MASTER_SERVER_NAME	"master.quake3arena.com"
+#ifdef ELITEFORCE
+
+  #if !defined UPDATE_SERVER_NAME && !defined STANDALONE
+    #define	UPDATE_SERVER_NAME	"motd.stef1.ravensoft.com"
+  #endif
+  #ifndef MASTER_SERVER_NAME
+    #define MASTER_SERVER_NAME	"master.stef1.ravensoft.com"
+  #endif
+
+  #define PORT_MASTER 27953
+
+#else
+
+  #if !defined UPDATE_SERVER_NAME && !defined STANDALONE
+    #define	UPDATE_SERVER_NAME	"update.quake3arena.com"
+  #endif
+  #define	UPDATE_SERVER_NAME	"update.quake3arena.com"
+  #ifndef MASTER_SERVER_NAME
+    #define MASTER_SERVER_NAME	"master.quake3arena.com"
+  #endif
+
+  #define PORT_MASTER 27950
+
 #endif
 
 #ifndef STANDALONE
-  #ifndef AUTHORIZE_SERVER_NAME
-    #define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
-  #endif
-  #ifndef PORT_AUTHORIZE
-  #define	PORT_AUTHORIZE		27952
+  #ifdef ELITEFORCE
+    #ifndef AUTHORIZE_SERVER_NAME
+      #define	AUTHORIZE_SERVER_NAME	"authenticate.stef1.ravensoft.com"
+    #endif
+    #ifndef PORT_AUTHORIZE
+    #define	PORT_AUTHORIZE		27953
+    #endif
+  #else
+    #ifndef AUTHORIZE_SERVER_NAME
+      #define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
+    #endif
+    #ifndef PORT_AUTHORIZE
+    #define	PORT_AUTHORIZE		27952
+    #endif
   #endif
 #endif
 
-#define	PORT_MASTER			27950
 #define	PORT_UPDATE			27951
 #define	PORT_SERVER			27960
 #define	NUM_SERVER_PORTS	4		// broadcast scan this many ports after
@@ -594,15 +637,23 @@ issues.
 #define FS_UI_REF		0x02
 #define FS_CGAME_REF	0x04
 // number of id paks that will never be autodownloaded from baseq3/missionpack
+#ifdef ELITEFORCE
+#define NUM_ID_PAKS		9
+#else
 #define NUM_ID_PAKS		9
 #define NUM_TA_PAKS		4
+#endif
 
 #define	MAX_FILE_HANDLES	64
 
+#ifdef ELITEFORCE
+  #define Q3CONFIG_CFG "hmconfig.cfg"
+#else
 #ifdef DEDICATED
 #	define Q3CONFIG_CFG "q3config_server.cfg"
 #else
 #	define Q3CONFIG_CFG "q3config.cfg"
+#endif
 #endif
 
 qboolean FS_Initialized( void );

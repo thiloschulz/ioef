@@ -723,9 +723,14 @@ void CL_Record_f( void ) {
 	if ( Cmd_Argc() == 2 ) {
 		s = Cmd_Argv(1);
 		Q_strncpyz( demoName, s, sizeof( demoName ) );
+
 #ifdef LEGACY_PROTOCOL
 		if(clc.compat)
+  #ifdef ELITEFORCE
+			Com_sprintf(name, sizeof(name), "demos/%s.efdemo", demoName);
+  #else
 			Com_sprintf(name, sizeof(name), "demos/%s.%s%d", demoName, DEMOEXT, com_legacyprotocol->integer);
+  #endif
 		else
 #endif
 			Com_sprintf(name, sizeof(name), "demos/%s.%s%d", demoName, DEMOEXT, com_protocol->integer);
@@ -737,7 +742,11 @@ void CL_Record_f( void ) {
 			CL_DemoFilename( number, demoName, sizeof( demoName ) );
 #ifdef LEGACY_PROTOCOL
 			if(clc.compat)
+  #ifdef ELITEFORCE
+				Com_sprintf(name, sizeof(name), "demos/%s.efdemo", demoName);
+  #else
 				Com_sprintf(name, sizeof(name), "demos/%s.%s%d", demoName, DEMOEXT, com_legacyprotocol->integer);
+  #endif
 			else
 #endif
 				Com_sprintf(name, sizeof(name), "demos/%s.%s%d", demoName, DEMOEXT, com_protocol->integer);
@@ -768,11 +777,23 @@ void CL_Record_f( void ) {
 	clc.demowaiting = qtrue;
 
 	// write out the gamestate message
-	MSG_Init (&buf, bufData, sizeof(bufData));
-	MSG_Bitstream(&buf);
+	#ifdef ELITEFORCE
+	if(clc.compat)
+	{
+		MSG_InitOOB(&buf, bufData, sizeof(bufData));
+		buf.compat = qtrue;
+	}
+	else
+	{
+	#endif
+		MSG_Init (&buf, bufData, sizeof(bufData));
+		MSG_Bitstream(&buf);
 
-	// NOTE, MRE: all server->client messages now acknowledge
-	MSG_WriteLong( &buf, clc.reliableSequence );
+		// NOTE, MRE: all server->client messages now acknowledge
+		MSG_WriteLong( &buf, clc.reliableSequence );
+	#ifdef ELITEFORCE
+	}
+	#endif
 
 	MSG_WriteByte (&buf, svc_gamestate);
 	MSG_WriteLong (&buf, clc.serverCommandSequence );
@@ -799,17 +820,30 @@ void CL_Record_f( void ) {
 		MSG_WriteDeltaEntity (&buf, &nullstate, ent, qtrue );
 	}
 
-	MSG_WriteByte( &buf, svc_EOF );
+	#ifdef ELITEFORCE
+	if(buf.compat)
+		MSG_WriteByte(&buf, 0);
+	else
+	#endif
+		MSG_WriteByte( &buf, svc_EOF );
 	
 	// finished writing the gamestate stuff
 
-	// write the client num
-	MSG_WriteLong(&buf, clc.clientNum);
-	// write the checksum feed
-	MSG_WriteLong(&buf, clc.checksumFeed);
+	#ifdef ELITEFORCE
+	if(!buf.compat)
+	{
+	#endif
+		// write the client num
+		MSG_WriteLong(&buf, clc.clientNum);
 
-	// finished writing the client packet
-	MSG_WriteByte( &buf, svc_EOF );
+		// write the checksum feed
+		MSG_WriteLong(&buf, clc.checksumFeed);
+
+		// finished writing the client packet
+		MSG_WriteByte( &buf, svc_EOF );
+	#ifdef ELITEFORCE
+	}
+	#endif
 
 	// write it to the demo file
 	len = LittleLong( clc.serverMessageSequence - 1 );
@@ -952,7 +986,15 @@ void CL_ReadDemoMessage( void ) {
 	clc.serverMessageSequence = LittleLong( s );
 
 	// init the message
-	MSG_Init( &buf, bufData, sizeof( bufData ) );
+	#ifdef ELITEFORCE
+	if(clc.compat)
+	{
+		MSG_InitOOB(&buf, bufData, sizeof(bufData));
+		buf.compat = qtrue;
+	}
+	else
+	#endif
+		MSG_Init( &buf, bufData, sizeof( bufData ) );
 
 	// get the length
 	r = FS_Read (&buf.cursize, 4, clc.demofile);
@@ -989,11 +1031,15 @@ static int CL_WalkDemoExt(char *arg, char *name, int *demofile)
 {
 	int i = 0;
 	*demofile = 0;
-
+	
 #ifdef LEGACY_PROTOCOL
 	if(com_legacyprotocol->integer > 0)
 	{
+#ifdef ELITEFORCE
+		Com_sprintf(name, MAX_OSPATH, "demos/%s.efdemo", arg);
+#else
 		Com_sprintf(name, MAX_OSPATH, "demos/%s.%s%d", arg, DEMOEXT, com_legacyprotocol->integer);
+#endif
 		FS_FOpenFileRead(name, demofile, qtrue);
 		
 		if (*demofile)
@@ -1084,9 +1130,20 @@ void CL_PlayDemo_f( void ) {
 
 	// open the demo file
 	arg = Cmd_Argv(1);
-	
-	CL_Disconnect( qtrue );
 
+	CL_Disconnect( qtrue );
+	
+#ifdef ELITEFORCE
+	ext_test = arg + strlen(arg) - 7;
+	if(!strcmp(ext_test, ".efdemo"))
+	{
+		Com_sprintf (name, sizeof(name), "demos/%s", arg);
+		FS_FOpenFileRead(name, &clc.demofile, qtrue);
+		protocol = com_legacyprotocol->integer;
+	}
+	else
+#endif
+{
 	// check for an extension .DEMOEXT_?? (?? is protocol)
 	ext_test = strrchr(arg, '.');
 	
@@ -1126,6 +1183,7 @@ void CL_PlayDemo_f( void ) {
 	}
 	else
 		protocol = CL_WalkDemoExt(arg, name, &clc.demofile);
+}
 	
 	if (!clc.demofile) {
 		Com_Error( ERR_DROP, "couldn't open %s", name);
@@ -1900,7 +1958,12 @@ void CL_SendPureChecksums( void ) {
 	char cMsg[MAX_INFO_VALUE];
 
 	// if we are pure we need to send back a command with our referenced pk3 checksums
-	Com_sprintf(cMsg, sizeof(cMsg), "cp %d %s", cl.serverId, FS_ReferencedPakPureChecksums());
+#ifdef ELITEFORCE
+	if(clc.compat)
+		Com_sprintf(cMsg, sizeof(cMsg), "cp %s", FS_ReferencedPakPureChecksums());
+	else
+#endif
+		Com_sprintf(cMsg, sizeof(cMsg), "cp %d %s", cl.serverId, FS_ReferencedPakPureChecksums());
 
 	CL_AddReliableCommand(cMsg, qfalse);
 }
@@ -2389,7 +2452,11 @@ void CL_CheckForResend( void ) {
 		Info_SetValueForKey( info, "challenge", va("%i", clc.challenge ) );
 		
 		Com_sprintf( data, sizeof(data), "connect \"%s\"", info );
-		NET_OutOfBandData( NS_CLIENT, clc.serverAddress, (byte *) data, strlen ( data ) );
+#ifdef ELITEFORCE
+			NET_OutOfBandPrint( NS_CLIENT, clc.serverAddress, "%s", data);
+#else
+			NET_OutOfBandData( NS_CLIENT, clc.serverAddress, (byte *) data, strlen ( data ) );
+#endif
 		// the most current userinfo has been sent, so watch for any
 		// newer changes to userinfo variables
 		cvar_modifiedFlags &= ~CVAR_USERINFO;
@@ -2467,6 +2534,9 @@ void CL_ServersResponsePacket( const netadr_t* from, msg_t *msg, qboolean extend
 	int				numservers;
 	byte*			buffptr;
 	byte*			buffend;
+	#ifdef ELITEFORCE
+	char strbyte[3] = "FF";
+	#endif
 	
 	Com_Printf("CL_ServersResponsePacket\n");
 
@@ -2496,12 +2566,30 @@ void CL_ServersResponsePacket( const netadr_t* from, msg_t *msg, qboolean extend
 		if (*buffptr == '\\')
 		{
 			buffptr++;
+#ifdef ELITEFORCE
+			if (buffend - buffptr < sizeof(addresses[numservers].ip) * 2 + sizeof(addresses[numservers].port) * 2 + 1)
+				break;
 
+			// EliteForce uses a slightly different format with bytes encoded
+			// in hex values.
+			for(i = 0; i < 6; i++)
+			{
+				strbyte[0] = toupper(*buffptr++);
+				strbyte[1] = toupper(*buffptr++);
+
+				if(i < 4)
+					addresses[numservers].ip[i] = strtoul(strbyte, NULL, 16);
+				else
+					((unsigned char *) &addresses[numservers].port)[i - 4] =
+						strtoul(strbyte, NULL, 16);
+			}
+#else
 			if (buffend - buffptr < sizeof(addresses[numservers].ip) + sizeof(addresses[numservers].port) + 1)
 				break;
 
 			for(i = 0; i < sizeof(addresses[numservers].ip); i++)
 				addresses[numservers].ip[i] = *buffptr++;
+#endif
 
 			addresses[numservers].type = NA_IP;
 		}
@@ -2517,17 +2605,24 @@ void CL_ServersResponsePacket( const netadr_t* from, msg_t *msg, qboolean extend
 				addresses[numservers].ip6[i] = *buffptr++;
 			
 			addresses[numservers].type = NA_IP6;
+#ifdef ELITEFORCE
+			// parse out port
+			addresses[numservers].port = (*buffptr++) << 8;
+			addresses[numservers].port += *buffptr++;
+			addresses[numservers].port = BigShort( addresses[numservers].port );
+#endif
 			addresses[numservers].scope_id = from->scope_id;
 		}
 		else
 			// syntax error!
 			break;
 			
+#ifndef ELITEFORCE
 		// parse out port
 		addresses[numservers].port = (*buffptr++) << 8;
 		addresses[numservers].port += *buffptr++;
 		addresses[numservers].port = BigShort( addresses[numservers].port );
-
+#endif
 		// syntax check
 		if (*buffptr != '\\' && *buffptr != '/')
 			break;
@@ -2728,6 +2823,9 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 			      clc.challenge, qfalse);
 #endif
 
+		#ifdef ELITEFORCE
+		clc.netchan.compat = clc.compat;
+		#endif
 		clc.state = CA_CONNECTED;
 		clc.lastPacketSentTime = -9999;		// send first packet immediately
 		return;
@@ -2800,7 +2898,10 @@ void CL_PacketEvent( netadr_t from, msg_t *msg ) {
 	int		headerBytes;
 
 	clc.lastPacketTime = cls.realtime;
-
+	#ifdef ELITEFORCE
+	msg->compat = clc.compat;
+	#endif
+	
 	if ( msg->cursize >= 4 && *(int *)msg->data == -1 ) {
 		CL_ConnectionlessPacket( from, msg );
 		return;
@@ -3117,7 +3218,11 @@ void CL_InitRenderer( void ) {
 	re.BeginRegistration( &cls.glconfig );
 
 	// load character sets
+#ifdef ELITEFORCE
+	cls.charSetShader = re.RegisterShaderNoMip( "gfx/2d/charsgrid_med" );
+#else
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
+#endif
 	cls.whiteShader = re.RegisterShader( "white" );
 	cls.consoleShader = re.RegisterShader( "console" );
 	g_console_field_width = cls.glconfig.vidWidth / SMALLCHAR_WIDTH - 2;
@@ -3496,6 +3601,8 @@ void CL_Init( void ) {
 	}
 
 	cls.realtime = 0;
+	clc.lastPacketTime = 0;
+	clc.lastPacketSentTime = -9999;
 
 	CL_InitInput ();
 
@@ -3530,7 +3637,11 @@ void CL_Init( void ) {
 	cl_pitchspeed = Cvar_Get ("cl_pitchspeed", "140", CVAR_ARCHIVE);
 	cl_anglespeedkey = Cvar_Get ("cl_anglespeedkey", "1.5", 0);
 
+#ifdef ELITEFORCE
+	cl_maxpackets = Cvar_Get ("cl_maxpackets", "43", CVAR_ARCHIVE );
+#else
 	cl_maxpackets = Cvar_Get ("cl_maxpackets", "30", CVAR_ARCHIVE );
+#endif
 	cl_packetdup = Cvar_Get ("cl_packetdup", "1", CVAR_ARCHIVE );
 
 	cl_run = Cvar_Get ("cl_run", "1", CVAR_ARCHIVE);
@@ -3611,12 +3722,14 @@ void CL_Init( void ) {
 	Cvar_Get ("name", "UnnamedPlayer", CVAR_USERINFO | CVAR_ARCHIVE );
 	cl_rate = Cvar_Get ("rate", "25000", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("snaps", "20", CVAR_USERINFO | CVAR_ARCHIVE );
-	Cvar_Get ("model", "sarge", CVAR_USERINFO | CVAR_ARCHIVE );
-	Cvar_Get ("headmodel", "sarge", CVAR_USERINFO | CVAR_ARCHIVE );
+	Cvar_Get ("model", "munro/red", CVAR_USERINFO | CVAR_ARCHIVE );
+	#ifndef ELITEFORCE
+	Cvar_Get ("headmodel", "munro", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("team_model", "james", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("team_headmodel", "*james", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("g_redTeam", "Stroggs", CVAR_SERVERINFO | CVAR_ARCHIVE);
 	Cvar_Get ("g_blueTeam", "Pagans", CVAR_SERVERINFO | CVAR_ARCHIVE);
+	#endif
 	Cvar_Get ("color1",  "4", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("color2", "5", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("handicap", "100", CVAR_USERINFO | CVAR_ARCHIVE );
@@ -3824,6 +3937,19 @@ void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 	char	*gamename;
 	qboolean gameMismatch;
 
+#ifdef ELITEFORCE
+	// eliteforce doesn't send a \n after infoResponse..
+	infoString = strchr((char *) msg->data, '"');
+	if(!infoString)
+		return;
+	msg->readcount = (int) ((byte *) ++infoString - msg->data);
+	msg->bit = msg->readcount << 3;
+	// find the second " character and empty it.
+	infoString = strchr(infoString, '"');
+	if(infoString)
+		*infoString = '\0';
+#endif
+
 	infoString = MSG_ReadString( msg );
 
 	// if this isn't the correct gamename, ignore it
@@ -3861,6 +3987,10 @@ void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 	{
 		if ( cl_pinglist[i].adr.port && !cl_pinglist[i].time && NET_CompareAdr( from, cl_pinglist[i].adr ) )
 		{
+#ifdef ELITEFORCE
+			char *str = "";
+#endif
+			
 			// calc ping time
 			cl_pinglist[i].time = Sys_Milliseconds() - cl_pinglist[i].start;
 			Com_DPrintf( "ping time %dms from %s\n", cl_pinglist[i].time, NET_AdrToString( from ) );
@@ -3875,15 +4005,25 @@ void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 				case NA_BROADCAST:
 				case NA_IP:
 					type = 1;
+#ifdef ELITEFORCE
+					str = "udp";
+#endif					
 					break;
 				case NA_IP6:
 					type = 2;
+#ifdef ELITEFORCE
+					str = "udp6";
+#endif					
 					break;
 				default:
 					type = 0;
 					break;
 			}
-			Info_SetValueForKey( cl_pinglist[i].info, "nettype", va("%d", type) );
+#ifdef ELITEFORCE
+			Info_SetValueForKey( cl_pinglist[i].info, "nettype", str);
+#else
+			Info_SetValueForKey( cl_pinglist[i].info, "nettype", va("%d", type));
+#endif
 			CL_SetServerInfoByAddress(from, infoString, cl_pinglist[i].time);
 
 			return;
@@ -4183,7 +4323,7 @@ void CL_GlobalServers_f( void ) {
 	// -1 is used to distinguish a "no response"
 
 	i = NET_StringToAdr(masteraddress, &to, NA_UNSPEC);
-	
+
 	if(!i)
 	{
 		Com_Printf( "CL_GlobalServers_f: Error: could not resolve address of master %s\n", masteraddress);
@@ -4217,8 +4357,13 @@ void CL_GlobalServers_f( void ) {
 		Com_sprintf(command, sizeof(command), "getservers %s",
 			Cmd_Argv(2));
 	else
+#ifdef ELITEFORCE
+		Com_sprintf(command, sizeof(command), "getservers %s",
+			Cmd_Argv(2));
+#else
 		Com_sprintf(command, sizeof(command), "getservers %s %s",
 			com_gamename->string, Cmd_Argv(2));
+#endif
 
 	for (i=3; i < count; i++)
 	{

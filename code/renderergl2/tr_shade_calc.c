@@ -43,6 +43,8 @@ static float *TableForFunc( genFunc_t func )
 		return tr.sawToothTable;
 	case GF_INVERSE_SAWTOOTH:
 		return tr.inverseSawToothTable;
+	case GF_NOISE:
+		return tr.noiseTable;
 	case GF_NONE:
 	default:
 		break;
@@ -589,7 +591,9 @@ void RB_DeformTessGeometry( void ) {
 		case DEFORM_TEXT5:
 		case DEFORM_TEXT6:
 		case DEFORM_TEXT7:
+#ifndef ELITEFORCE
 			DeformText( backEnd.refdef.text[ds->deformation - DEFORM_TEXT0] );
+#endif
 			break;
 		}
 	}

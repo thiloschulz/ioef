@@ -32,8 +32,11 @@ endif
 ifndef BUILD_MISSIONPACK
   BUILD_MISSIONPACK=
 endif
+ifndef BUILD_ELITEFORCE
+  BUILD_ELITEFORCE =
+endif
 ifndef BUILD_RENDERER_OPENGL2
-  BUILD_RENDERER_OPENGL2=
+  BUILD_RENDERER_OPENGL2=0
 endif
 
 #############################################################################
@@ -101,7 +104,11 @@ endif
 export CROSS_COMPILING
 
 ifndef VERSION
-VERSION=1.36
+  ifeq ($(BUILD_ELITEFORCE),1)
+    VERSION=1.38
+  else
+    VERSION=1.36
+  endif
 endif
 
 ifndef CLIENTBIN
@@ -174,6 +181,10 @@ endif
 
 ifndef USE_CODEC_VORBIS
 USE_CODEC_VORBIS=0
+endif
+
+ifndef USE_CODEC_MP3
+USE_CODEC_MP3=0
 endif
 
 ifndef USE_CODEC_OPUS
@@ -262,6 +273,10 @@ LOKISETUPDIR=misc/setup
 NSISDIR=misc/nsis
 SDLHDIR=$(MOUNT_DIR)/SDL2
 LIBSDIR=$(MOUNT_DIR)/libs
+
+ifeq ($(BUILD_ELITEFORCE),1)
+  CFLAGS += -DELITEFORCE
+endif
 
 bin_path=$(shell which $(1) 2> /dev/null)
 
@@ -360,6 +375,7 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu" "gnu")
 
   THREAD_LIBS=-lpthread
   LIBS=-ldl -lm
+  LIBS += -L/emul/linux/x86/usr/lib
 
   CLIENT_LIBS=$(SDL_LIBS)
   RENDERER_LIBS = $(SDL_LIBS) -lGL
@@ -375,6 +391,10 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu" "gnu")
     ifneq ($(USE_CURL_DLOPEN),1)
       CLIENT_LIBS += $(CURL_LIBS)
     endif
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LIBS += -lmad
   endif
 
   ifeq ($(USE_MUMBLE),1)
@@ -448,6 +468,11 @@ ifeq ($(PLATFORM),darwin)
     ifneq ($(USE_OPENAL_DLOPEN),1)
       CLIENT_LIBS += -framework OpenAL
     endif
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+    CLIENT_LIBS += -lmad
   endif
 
   ifeq ($(USE_CURL),1)
@@ -544,6 +569,14 @@ ifdef MINGW
     CLIENT_CFLAGS += $(OPENAL_CFLAGS)
     ifneq ($(USE_OPENAL_DLOPEN),1)
       CLIENT_LDFLAGS += $(OPENAL_LDFLAGS)
+    endif
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    ifeq ($(ARCH),x64)
+      CLIENT_LIBS += $(LIBSDIR)/win64/libmad.a
+    else
+      CLIENT_LIBS += $(LIBSDIR)/win32/libmad.a
     endif
   endif
 
@@ -679,6 +712,10 @@ ifeq ($(PLATFORM),freebsd)
     ifeq ($(USE_CURL_DLOPEN),1)
       CLIENT_LIBS += $(CURL_LIBS)
     endif
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LIBS += -lmad
   endif
 
   # cross-compiling tweaks
@@ -984,6 +1021,10 @@ ifeq ($(USE_VOIP),1)
   CLIENT_CFLAGS += -DUSE_VOIP
   SERVER_CFLAGS += -DUSE_VOIP
   NEED_OPUS=1
+endif
+
+ifeq ($(USE_CODEC_MP3),1)
+  CLIENT_CFLAGS += -DUSE_CODEC_MP3=1
 endif
 
 ifeq ($(USE_CODEC_OPUS),1)
@@ -1563,6 +1604,7 @@ Q3OBJ = \
   $(B)/client/snd_codec.o \
   $(B)/client/snd_codec_wav.o \
   $(B)/client/snd_codec_ogg.o \
+  $(B)/client/snd_codec_mp3.o \
   $(B)/client/snd_codec_opus.o \
   \
   $(B)/client/qal.o \
@@ -2082,6 +2124,7 @@ endif
 endif
 
 
+$(B)/client/snd_codec_mp3.o : $(CDIR)/snd_codec_mp3.c; $(DO_CC)
 
 #############################################################################
 # DEDICATED SERVER

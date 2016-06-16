@@ -1499,7 +1499,6 @@ static void RB_SurfaceGrid( srfBspSurface_t *srf ) {
 	}
 }
 
-
 /*
 ===========================================================================
 
@@ -1547,6 +1546,9 @@ Entities that have a single procedurally generated surface
 */
 static void RB_SurfaceEntity( surfaceType_t *surfType ) {
 	switch( backEnd.currentEntity->e.reType ) {
+#ifdef ELITEFORCE
+	case RT_ALPHAVERTPOLY:
+#endif
 	case RT_SPRITE:
 		RB_SurfaceSprite();
 		break;
@@ -1562,6 +1564,29 @@ static void RB_SurfaceEntity( surfaceType_t *surfType ) {
 	case RT_LIGHTNING:
 		RB_SurfaceLightningBolt();
 		break;
+#ifdef ELITEFORCE
+	case RT_ORIENTEDSPRITE:
+		RB_SurfaceOrientedSprite();
+		break;
+	case RT_LINE:
+		RB_SurfaceLine();
+		break;
+	case RT_ORIENTEDLINE:
+		RB_SurfaceOrientedLine();
+		break;
+	case RT_LINE2:
+		RB_SurfaceLine2();
+		break;
+	case RT_BEZIER:
+		RB_SurfaceBezier();
+		break;
+	case RT_CYLINDER:
+		RB_SurfaceCylinder();
+		break;
+	case RT_ELECTRICITY:
+		RB_SurfaceElectricity();
+		break;
+#endif
 	default:
 		RB_SurfaceAxis();
 		break;
